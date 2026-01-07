@@ -19,9 +19,28 @@ public class Agent {
     // --- javaagent entrypoint ---
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[AGENT] premain called, instrumentation=" + inst);
-        Loader.init();  // <-- this wires your existing Client hook
-    }
+        Loader.init();
 
+// CLIENT HOOK: poll known Client field until ready
+        new Thread(() -> {
+            while (clientInstance == null) {
+                try {
+                    // Poll fw.client or client.ClientLoader.client field (repo has these)
+                    var fwClient = fw.class.getField("client").get(null); // adjust field name
+                    if (fwClient instanceof Client) {
+                        init((Client) fwClient);
+                        return;
+                    }
+                } catch (Exception ignored) {
+                    // field not ready
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ex) {}
+            }
+        }, "Client-Hook").start();
+
+    }
 
     // Register a script/plugin
     public static void registerScript(Runnable r) {
@@ -29,12 +48,10 @@ public class Agent {
         System.out.println("[AGENT] Script registered: " + r.getClass().getName());
     }
 
-    // Initialize for offline/standalone (called from your hook once you have Client)
+    // Initialize for offline/standalone
     public static void init(Client client) {
         clientInstance = client;
         System.out.println("[AGENT] Client hooked: " + clientInstance);
-
-        Loader.init();
 
         running = true;
         Thread heartbeat = new Thread(() -> {
