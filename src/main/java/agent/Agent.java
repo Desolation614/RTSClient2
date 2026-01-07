@@ -6,6 +6,7 @@ import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,88 +16,133 @@ public class Agent {
     public static Client clientInstance;
     private static final List<Runnable> scripts = new ArrayList<>();
     private static boolean running = false;
+    private static Object fwInstance;
 
-    // --- javaagent entrypoint ---
     public static void premain(String agentArgs, Instrumentation inst) {
-        System.out.println("[AGENT] premain called, instrumentation=" + inst);
+        System.out.println("[AGENT] premain - HUNTING CLIENT");
         Loader.init();
 
-        // CLIENT HOOK: poll until clientInstance is found
         new Thread(() -> {
             int attempts = 0;
-
-            while (clientInstance == null && attempts < 1000) {
+            while (clientInstance == null && attempts < 5000) {
                 attempts++;
-                try {
-                    // --- Candidate classes to scan for static Client fields ---
-                    Class<?>[] candidates = new Class<?>[] {
-                            fw.class,          // main RSPS framework class
-                            Class.forName("client") // try plain 'client' class if it exists
-                    };
 
-                    for (Class<?> cls : candidates) {
-                        for (Field f : cls.getDeclaredFields()) {
-                            if (Modifier.isStatic(f.getModifiers()) && Client.class.isAssignableFrom(f.getType())) {
-                                f.setAccessible(true);
-                                try {
-                                    Object obj = f.get(null);
-                                    if (obj != null) {
-                                        clientInstance = (Client) obj;
-                                        System.out.println("[AGENT] Client hooked via field: "
-                                                + cls.getSimpleName() + "." + f.getName()
-                                                + " after " + attempts + " polls");
-                                        init(clientInstance);
-                                        return;
-                                    }
-                                } catch (Exception ignored) {}
-                            }
-                        }
-                    }
+                diagnoseRuneLite();
+                diagnoseStaticFields();
+                diagnoseLoadedClasses();
 
-                } catch (ClassNotFoundException ex) {
-                    // ignore if a class doesn't exist
+                if (attempts % 50 == 0) { // 12s intervals
+                    System.out.println("[AGENT] #" + attempts + " client=" + (clientInstance != null) +
+                            " fw=" + (fwInstance != null));
                 }
-
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException ignored) {}
+                try { Thread.sleep(250); } catch (InterruptedException ignored) {}
             }
-
-            if (clientInstance == null) {
-                System.out.println("[AGENT] ERROR: Could not find Client after " + attempts + " polls");
-            }
-        }, "Client-Hook").start();
+        }, "Client-Hunter").start();
     }
 
-    // Register a script/plugin
+    private static void diagnoseRuneLite() {
+        try {
+            Class<?> rlClass = Class.forName("net.runelite.client.RuneLite");
+            Field[] fields = rlClass.getDeclaredFields();
+            for (Field f : fields) {
+                if (f.getType().getName().contains("Client")) {
+                    f.setAccessible(true);
+                    Object obj = f.get(null);
+                    if (obj instanceof Client cl) {
+                        clientInstance = cl;
+                        System.out.println("[AGENT] HOOKED RuneLite." + f.getName() + "=" + cl);
+                        tryFwCapture();
+                        init(clientInstance);
+                        return;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // silent
+        }
+    }
+
+    private static void diagnoseStaticFields() {
+        String[] targets = {"client", "fw", "fW", "RuneLite", "ClientLoader"};
+        for (String t : targets) {
+            try {
+                Class<?> cls = Class.forName(t);
+                Field[] fields = cls.getDeclaredFields();
+                for (Field f : fields) {
+                    if (Modifier.isStatic(f.getModifiers()) && f.getType().getName().contains("Client")) {
+                        f.setAccessible(true);
+                        Object obj = f.get(null);
+                        if (obj instanceof Client cl) {
+                            clientInstance = cl;
+                            System.out.println("[AGENT] HOOKED static " + t + "." + f.getName());
+                            tryFwCapture();
+                            init(clientInstance);
+                            return;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private static void diagnoseLoadedClasses() {
+        // RSPS pattern: single-letter class with client field
+        for (char c = 'a'; c <= 'z'; c++) {
+            try {
+                String className = String.valueOf(c);
+                Class<?> cls = Class.forName(className);
+                Field[] fields = cls.getDeclaredFields();
+                for (Field f : fields) {
+                    if (Modifier.isStatic(f.getModifiers()) && f.getType().getName().contains("Client")) {
+                        f.setAccessible(true);
+                        Object obj = f.get(null);
+                        if (obj instanceof Client cl) {
+                            clientInstance = cl;
+                            System.out.println("[AGENT] HOOKED obfuscated " + className + "." + f.getName());
+                            tryFwCapture();
+                            init(clientInstance);
+                            return;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private static void tryFwCapture() {
+        if (fwInstance != null) return;
+        String[] fwNames = {"fw", "fW"};
+        for (String name : fwNames) {
+            try {
+                Class<?> fwCls = Class.forName(name);
+                fwInstance = fwCls.getDeclaredConstructor().newInstance();
+                System.out.println("[AGENT] fw captured: " + name);
+                return;
+            } catch (Exception ex) {
+                if (fwInstance == null) System.out.println("[AGENT] fw fail: " + ex.getClass().getSimpleName());
+            }
+        }
+    }
+
     public static void registerScript(Runnable r) {
         scripts.add(r);
         System.out.println("[AGENT] Script registered: " + r.getClass().getName());
     }
 
-    // Initialize Agent once client is found
     public static void init(Client client) {
         clientInstance = client;
-        System.out.println("[AGENT] Client fully initialized: " + clientInstance);
-
+        System.out.println("[AGENT] Client INIT: " + clientInstance);
         running = true;
         Thread heartbeat = new Thread(() -> {
             while (running) {
                 try {
                     for (Runnable script : scripts) {
-                        try {
-                            script.run();
-                        } catch (Exception ex) {
-                            ex.printStackTrace();
-                        }
+                        script.run();
                     }
                     Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+                } catch (InterruptedException ignored) {}
             }
         }, "Agent-Heartbeat");
-
         heartbeat.setDaemon(true);
         heartbeat.start();
     }
@@ -106,38 +152,23 @@ public class Agent {
     }
 
     public static void attackNpc(NPC npc) {
-        if (clientInstance == null || npc == null) {
-            System.out.println("[AGENT] Client or NPC is null!");
-            return;
-        }
+        if (clientInstance == null || npc == null || fwInstance == null) return;
 
-        Player localPlayer = clientInstance.getLocalPlayer();
-        if (localPlayer == null) return;
+        Player p = clientInstance.getLocalPlayer();
+        if (p == null) return;
 
-        WorldPoint playerLoc = localPlayer.getWorldLocation();
-        WorldPoint npcLoc = npc.getWorldLocation();
-        if (playerLoc == null || npcLoc == null) return;
-
-        if (playerLoc.distanceTo(npcLoc) > 1) return;
+        WorldPoint ploc = p.getWorldLocation(), nloc = npc.getWorldLocation();
+        if (ploc.distanceTo(nloc) > 1) return;
 
         try {
-            // fw.a is the RSPS attack method
-            fw.a(
-                    playerLoc.getX(),
-                    playerLoc.getY(),
-                    20,
-                    npc.getIndex(),
-                    0,
-                    npc.getId(),
-                    "Attack",
-                    npc.getName(),
-                    -1,
-                    -1
-            );
-
-            System.out.println("[AGENT] Sent attack to NPC index " + npc.getIndex());
+            Method m = fwInstance.getClass().getDeclaredMethod("a", int.class, int.class, int.class, int.class,
+                    int.class, int.class, String.class, String.class, int.class, int.class);
+            m.setAccessible(true);
+            m.invoke(fwInstance, ploc.getX(), ploc.getY(), 20, npc.getIndex(), 0, npc.getId(),
+                    "Attack", npc.getName(), -1, -1);
+            System.out.println("[AGENT] ATTACK EXECUTED on " + npc.getIndex());
         } catch (Exception ex) {
-            ex.printStackTrace();
+            System.err.println("[AGENT] Attack failed: " + ex.getMessage());
         }
     }
 }
