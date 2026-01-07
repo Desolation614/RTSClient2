@@ -10,6 +10,9 @@ import net.runelite.api.coords.WorldPoint;
 public class GoblinFighter implements Script {
     private static final int GOBLIN_ID = 3239;
     private static final int MAX_DIST = 10;
+    private static final long ATTACK_COOLDOWN = 1000; // ms between attacks
+
+    private long lastAttackTime = 0;
 
     @Override
     public void onStart() {
@@ -27,6 +30,11 @@ public class GoblinFighter implements Script {
         WorldPoint pLoc = local.getWorldLocation();
         if (pLoc == null) return;
 
+        if (client.getNpcs() == null) return;
+
+        // Avoid attacking too frequently
+        if (System.currentTimeMillis() - lastAttackTime < ATTACK_COOLDOWN) return;
+
         NPC goblin = client.getNpcs().stream()
                 .filter(n -> n != null && n.getId() == GOBLIN_ID)
                 .filter(n -> n.getHealthRatio() > 0)
@@ -41,7 +49,9 @@ public class GoblinFighter implements Script {
                 .orElse(null);
 
         if (goblin != null) {
+            System.out.println("[GoblinFighter] Attacking goblin at " + goblin.getWorldLocation());
             Agent.attackNpc(goblin);
+            lastAttackTime = System.currentTimeMillis();
         }
     }
 
