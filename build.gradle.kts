@@ -1,3 +1,6 @@
+println("LOADED build.gradle.kts from: " + project.projectDir)
+
+
 plugins {
     java
     application
@@ -10,10 +13,7 @@ java {
 }
 
 repositories {
-    mavenCentral()
-    flatDir {
-        dirs("libs")  // <-- your local JARs folder
-    }
+    flatDir { dirs("libs") }
 }
 
 dependencies {
@@ -28,9 +28,19 @@ dependencies {
 }
 
 
+
 application {
     mainClass.set("net.runelite.launcher.Launcher")
 }
+
+tasks.register("dumpCp") {
+    doLast {
+        println("implementation deps = " + configurations.getByName("implementation").dependencies.joinToString())
+        println("compileClasspath files:")
+        configurations.getByName("compileClasspath").files.forEach { println(it.absolutePath) }
+    }
+}
+
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"

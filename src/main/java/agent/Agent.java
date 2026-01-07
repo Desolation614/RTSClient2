@@ -1,5 +1,10 @@
 package agent;
 
+import osrs.fw;
+import net.runelite.api.Client;
+import net.runelite.api.NPC;
+import net.runelite.api.Player;
+import net.runelite.api.coords.WorldPoint;
 
 import java.util.ArrayList;
 import java.util.List;

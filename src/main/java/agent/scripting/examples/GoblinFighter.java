@@ -1,5 +1,7 @@
 package agent.examples;
 
+
+
 import agent.Agent;
 import agent.scripting.Script;
 import agent.scripting.ScriptManager;
@@ -18,7 +20,6 @@ public class GoblinFighter implements Script {
     private final int MAX_DISTANCE = 5;
 
     public GoblinFighter(Client client) {
-        super("GoblinFighter");
         this.client = client;
     }
 
