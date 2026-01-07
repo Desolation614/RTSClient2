@@ -1,11 +1,5 @@
 package agent;
 
-import net.runelite.api.Client;
-import net.runelite.api.NPC;
-import net.runelite.api.Player;
-import net.runelite.api.MenuAction;
-import net.runelite.api.coords.WorldPoint;
-import osrs.fw; // only if needed for raw attack packet
 
 import java.util.ArrayList;
 import java.util.List;
