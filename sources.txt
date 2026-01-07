@@ -1,0 +1,4 @@
+C:\RTSClient2\RTSClient2\src\main\java\agent\Agent.java
+C:\RTSClient2\RTSClient2\src\main\java\agent\scripting\Script.java
+C:\RTSClient2\RTSClient2\src\main\java\agent\scripting\ScriptManager.java
+C:\RTSClient2\RTSClient2\src\main\java\agent\scripting\examples\GoblinFighter.java
