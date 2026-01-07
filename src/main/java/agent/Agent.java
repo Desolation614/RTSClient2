@@ -55,6 +55,7 @@ public class Agent {
     }
 
     // Attack an NPC using RuneLite's menu system
+// Attack an NPC using injected-client executor (deterministic, no menu/click path)
     public static void attackNpc(NPC npc) {
         if (clientInstance == null || npc == null) {
             System.out.println("[AGENT] Client or NPC is null!");
@@ -62,39 +63,38 @@ public class Agent {
         }
 
         Player localPlayer = clientInstance.getLocalPlayer();
-        if (localPlayer == null) return;
+        if (localPlayer == null) {
+            return;
+        }
 
         WorldPoint playerLoc = localPlayer.getWorldLocation();
         WorldPoint npcLoc = npc.getWorldLocation();
+        if (playerLoc == null || npcLoc == null) {
+            return;
+        }
 
-        int distance = playerLoc.distanceTo(npcLoc);
-        if (distance > 1) return; // Only attack in range
+        // Keep your range gate (adjust later when you add pathing)
+        if (playerLoc.distanceTo(npcLoc) > 1) {
+            return;
+        }
 
         try {
-            // Prefer RuneLite API interaction if available
-            npc.interact("Attack");
+            fw.a(
+                    playerLoc.getX(),
+                    playerLoc.getY(),
+                    20,             // NPC attack opcode
+                    npc.getIndex(),  // npc index
+                    0,
+                    npc.getId(),     // npc id
+                    "Attack",
+                    npc.getName(),
+                    -1,
+                    -1
+            );
 
             System.out.println("[AGENT] Sent attack interaction to NPC index " + npc.getIndex());
-        } catch (Exception e) {
-            e.printStackTrace();
-
-            // Fallback: raw packet call via fw
-            try {
-                fw.a(
-                        playerLoc.getX(),
-                        playerLoc.getY(),
-                        20,           // opcode for attack
-                        npc.getIndex(),
-                        0,
-                        npc.getId(),
-                        "Attack",
-                        npc.getName(),
-                        -1,
-                        -1
-                );
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
     }
 }
