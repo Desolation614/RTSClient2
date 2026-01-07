@@ -1,67 +1,105 @@
 package agent.examples;
 
-
-
 import agent.Agent;
 import agent.scripting.Script;
 import agent.scripting.ScriptManager;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 
-import java.util.List;
-
-public class GoblinFighter implements Script {
-
+public class GoblinFighter implements Script
+{
     private final Client client;
 
-    // Optional: distance within which to attack
-    private final int MAX_DISTANCE = 5;
+    private static final int MAX_DISTANCE = 5;
 
-    public GoblinFighter(Client client) {
+    public GoblinFighter(Client client)
+    {
         this.client = client;
     }
 
     @Override
-    public void onStart() {
+    public void onStart()
+    {
         System.out.println("[GoblinFighter] Script started");
     }
 
     @Override
-    public void onTick() {
-        if (client == null) return;
+    public void onTick()
+    {
+        if (client == null)
+        {
+            return;
+        }
 
         Player localPlayer = client.getLocalPlayer();
-        if (localPlayer == null) return;
+        if (localPlayer == null)
+        {
+            return;
+        }
 
         WorldPoint playerLoc = localPlayer.getWorldLocation();
+        if (playerLoc == null)
+        {
+            return;
+        }
 
-        // Get all NPCs from RuneLite (read-only)
-        List<NPC> npcs = client.getNpcs();
+        WorldView wv = client.getTopLevelWorldView();
+        if (wv == null)
+        {
+            return;
+        }
 
-        for (NPC npc : npcs) {
-            if (npc == null) continue;
-            if (npc.getHealthRatio() <= 0) continue; // skip dead NPCs
-            if (!npc.getName().equalsIgnoreCase("Goblin")) continue; // target goblins only
+        for (NPC npc : wv.npcs())
+        {
+            if (npc == null)
+            {
+                continue;
+            }
+
+            String name = npc.getName();
+            if (name == null)
+            {
+                continue;
+            }
+
+            if (npc.getHealthRatio() <= 0)
+            {
+                continue; // dead/invalid
+            }
+
+            if (!name.equalsIgnoreCase("Goblin"))
+            {
+                continue;
+            }
 
             WorldPoint npcLoc = npc.getWorldLocation();
-            if (npcLoc.distanceTo(playerLoc) > MAX_DISTANCE) continue;
+            if (npcLoc == null)
+            {
+                continue;
+            }
 
-            // Attack using fw.a(...) via Agent helper
+            if (npcLoc.distanceTo(playerLoc) > MAX_DISTANCE)
+            {
+                continue;
+            }
+
             Agent.attackNpc(npc);
-
             System.out.println("[GoblinFighter] Attacking goblin index=" + npc.getIndex() + " id=" + npc.getId());
+            return; // one action per tick
         }
     }
 
     @Override
-    public void onStop() {
+    public void onStop()
+    {
         System.out.println("[GoblinFighter] Script stopped");
     }
 
-    // Optional: register automatically when class is loaded
-    public static void register(Client client) {
+    public static void register(Client client)
+    {
         ScriptManager.register(new GoblinFighter(client));
     }
 }
