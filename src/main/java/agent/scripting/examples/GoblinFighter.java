@@ -10,7 +10,7 @@ import net.runelite.api.coords.WorldPoint;
 
 import java.util.List;
 
-public class GoblinFighter extends Script {
+public class GoblinFighter implements Script {
 
     private final Client client;
 

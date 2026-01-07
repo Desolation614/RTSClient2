@@ -17,11 +17,16 @@ repositories {
 }
 
 dependencies {
-    implementation(":runelite-api:")
-    implementation(":injected-client:")
-    implementation(":client:")
-    implementation(":feroxlauncher:")
+    implementation(files(
+        "libs/runelite-api.jar",
+        "libs/runescape-api.jar",
+        "libs/injected-client.jar",
+        "libs/client.jar",
+        "libs/feroxlauncher.jar",
+        "libs/okhttp-3.14.9.jar"
+    ))
 }
+
 
 application {
     mainClass.set("net.runelite.launcher.Launcher")
