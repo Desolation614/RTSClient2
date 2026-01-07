@@ -19,9 +19,9 @@ public class Agent {
     // --- javaagent entrypoint ---
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[AGENT] premain called, instrumentation=" + inst);
-        // You can set up transformers here if you need them later.
-        // For now this just proves the agent loaded.
+        Loader.init();  // <-- this wires your existing Client hook
     }
+
 
     // Register a script/plugin
     public static void registerScript(Runnable r) {
