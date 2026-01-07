@@ -5,6 +5,7 @@ import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.GameState;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
@@ -21,29 +22,26 @@ public class Agent
     private static volatile boolean running = false;
     private static volatile boolean initialized = false;
 
-    // Cache fw.a(...) as a Method. It's static, so invoke with null target.
+    // Cached internal executor
     private static volatile Method fwAMethod = null;
 
+    // =======================
+    // premain ENTRYPOINT
+    // =======================
     public static void premain(String agentArgs, Instrumentation inst)
     {
         System.out.println("[AGENT] premain - HUNTING CLIENT");
         Loader.init();
 
-        new Thread(() ->
-        {
+        new Thread(() -> {
             int attempts = 0;
 
             while (!initialized && attempts < 5000)
             {
                 attempts++;
 
-                // 1) BEST: hook gamepack main client directly (from your decompile: osrs/client.java)
                 hookMainClient();
-
-                // 2) Cache interaction executor (from your decompile: osrs.fw.a(...))
                 tryFwCapture();
-
-                // 3) Keep old heuristics as fallback (harmless)
                 diagnoseRuneLite();
                 diagnoseStaticFields();
                 diagnoseLoadedClasses();
@@ -58,93 +56,81 @@ public class Agent
 
                 try { Thread.sleep(250); } catch (InterruptedException ignored) {}
             }
-
         }, "Client-Hunter").start();
     }
 
-    /**
-     * Hook the *real* RS client object by scanning static fields in osrs.client (or client).
-     */
-    private static void hookMainClient() {
-        try {
+    // =======================
+    // CLIENT HOOKING
+    // =======================
+    private static void hookMainClient()
+    {
+        try
+        {
             Class<?> loaderCls = Class.forName("net.runelite.client.rs.ClientLoader");
 
-            for (Field f : loaderCls.getDeclaredFields()) {
-                if (Modifier.isStatic(f.getModifiers())) {
+            // Static fields
+            for (Field f : loaderCls.getDeclaredFields())
+            {
+                if (!Modifier.isStatic(f.getModifiers())) continue;
+
+                f.setAccessible(true);
+                Object obj = f.get(null);
+
+                if (obj instanceof Client cl)
+                {
+                    System.out.println("[AGENT] HOOKED ClientLoader." + f.getName());
+                    init(cl);
+                    return;
+                }
+            }
+
+            // INSTANCE fields
+            try
+            {
+                Field instanceField = loaderCls.getDeclaredField("INSTANCE");
+                instanceField.setAccessible(true);
+                Object instance = instanceField.get(null);
+
+                for (Field f : loaderCls.getDeclaredFields())
+                {
                     f.setAccessible(true);
-                    Object obj = f.get(null);
-                    if (obj instanceof Client cl) {
-                        Agent.clientInstance = cl;
-                        System.out.println("[AGENT] HOOKED ClientLoader." + f.getName());
-                        Agent.init(cl);
+                    Object obj = f.get(instance);
+
+                    if (obj instanceof Client cl)
+                    {
+                        System.out.println("[AGENT] HOOKED ClientLoader.INSTANCE." + f.getName());
+                        init(cl);
                         return;
                     }
                 }
             }
-
-            Field instanceField = loaderCls.getDeclaredField("INSTANCE");
-            instanceField.setAccessible(true);
-            Object loaderInstance = instanceField.get(null);
-            for (Field f : loaderCls.getDeclaredFields()) {
-                f.setAccessible(true);
-                Object obj = f.get(loaderInstance);
-                if (obj instanceof Client cl) {
-                    Agent.clientInstance = cl;
-                    System.out.println("[AGENT] HOOKED ClientLoader.INSTANCE." + f.getName());
-                    Agent.init(cl);
-                    return;
-                }
-            }
-        } catch (Exception ignored) {}
-    }
-
-    /**
-     * Cache fw.a(...) as a Method.
-     */
-    private static void tryFwCapture()
-    {
-        if (fwAMethod != null) return;
-
-        String[] fwNames = new String[] { "osrs.fw", "fw", "osrs.fW", "fW" };
-
-        for (String name : fwNames)
-        {
-            try
-            {
-                Class<?> fwCls = Class.forName(name);
-                Method m = fwCls.getDeclaredMethod(
-                        "a",
-                        int.class, int.class, int.class, int.class, int.class,
-                        int.class, String.class, String.class, int.class, int.class
-                );
-                m.setAccessible(true);
-
-                fwAMethod = m;
-                System.out.println("[AGENT] Cached " + name + ".a(...)");
-                return;
-            }
             catch (Throwable ignored) {}
+
         }
+        catch (Throwable ignored) {}
     }
 
-    private static void diagnoseRuneLite() {
-        try {
-            Class<?> rlClass = Class.forName("net.runelite.client.RuneLite");
-            Field instanceField = rlClass.getDeclaredField("INSTANCE");
-            instanceField.setAccessible(true);
-            Object runeLiteInstance = instanceField.get(null);
+    private static void diagnoseRuneLite()
+    {
+        try
+        {
+            Class<?> rl = Class.forName("net.runelite.client.RuneLite");
 
-            Field clientField = rlClass.getDeclaredField("client");
+            Field instField = rl.getDeclaredField("INSTANCE");
+            instField.setAccessible(true);
+            Object rlInst = instField.get(null);
+
+            Field clientField = rl.getDeclaredField("client");
             clientField.setAccessible(true);
-            Object obj = clientField.get(runeLiteInstance);
+            Object obj = clientField.get(rlInst);
 
-            if (obj instanceof Client cl) {
-                Agent.clientInstance = cl;
+            if (obj instanceof Client cl)
+            {
                 System.out.println("[AGENT] HOOKED RuneLite.INSTANCE.client");
-                Agent.init(cl);
-                return;
+                init(cl);
             }
-        } catch (Exception ex) {}
+        }
+        catch (Throwable ignored) {}
     }
 
     private static void diagnoseStaticFields()
@@ -152,16 +138,14 @@ public class Agent
         String[] targets = {
                 "osrs.client",
                 "client",
-                "osrs.fw",
-                "fw",
                 "net.runelite.client.rs.ClientLoader"
         };
 
-        for (String t : targets)
+        for (String name : targets)
         {
             try
             {
-                Class<?> cls = Class.forName(t);
+                Class<?> cls = Class.forName(name);
 
                 for (Field f : cls.getDeclaredFields())
                 {
@@ -170,11 +154,10 @@ public class Agent
                     f.setAccessible(true);
                     Object obj = f.get(null);
 
-                    if (obj != null && Client.class.isInstance(obj))
+                    if (obj instanceof Client cl)
                     {
-                        clientInstance = (Client) obj;
-                        System.out.println("[AGENT] HOOKED static " + t + "." + f.getName());
-                        init(clientInstance);
+                        System.out.println("[AGENT] HOOKED static " + name + "." + f.getName());
+                        init(cl);
                         return;
                     }
                 }
@@ -189,8 +172,7 @@ public class Agent
         {
             try
             {
-                String className = String.valueOf(c);
-                Class<?> cls = Class.forName(className);
+                Class<?> cls = Class.forName(String.valueOf(c));
 
                 for (Field f : cls.getDeclaredFields())
                 {
@@ -199,11 +181,10 @@ public class Agent
                     f.setAccessible(true);
                     Object obj = f.get(null);
 
-                    if (obj != null && Client.class.isInstance(obj))
+                    if (obj instanceof Client cl)
                     {
-                        clientInstance = (Client) obj;
-                        System.out.println("[AGENT] HOOKED obfuscated " + className + "." + f.getName());
-                        init(clientInstance);
+                        System.out.println("[AGENT] HOOKED obfuscated " + cls.getName() + "." + f.getName());
+                        init(cl);
                         return;
                     }
                 }
@@ -212,6 +193,38 @@ public class Agent
         }
     }
 
+    // =======================
+    // fw.a(...) CAPTURE
+    // =======================
+    private static void tryFwCapture()
+    {
+        if (fwAMethod != null) return;
+
+        String[] names = { "osrs.fw", "fw", "osrs.fW", "fW" };
+
+        for (String name : names)
+        {
+            try
+            {
+                Class<?> fwCls = Class.forName(name);
+                Method m = fwCls.getDeclaredMethod(
+                        "a",
+                        int.class, int.class, int.class, int.class, int.class,
+                        int.class, String.class, String.class, int.class, int.class
+                );
+                m.setAccessible(true);
+                fwAMethod = m;
+
+                System.out.println("[AGENT] Cached " + name + ".a(...)");
+                return;
+            }
+            catch (Throwable ignored) {}
+        }
+    }
+
+    // =======================
+    // SCRIPT CORE
+    // =======================
     public static void registerScript(Runnable r)
     {
         scripts.add(r);
@@ -225,55 +238,44 @@ public class Agent
         clientInstance = client;
         initialized = true;
 
-        // Force ScriptManager every 5s
-        new Thread(() -> {
-            while (true) {
-                try {
-                    ScriptManager.registerIfReady();
-                    Thread.sleep(5000);
-                } catch (InterruptedException ignored) {}
-            }
-        }, "Script-Forcer").start();
-
-
         System.out.println("[AGENT] Client INIT: " + clientInstance);
 
-        // **NEW: Register scripts when client ready**
-        ScriptManager.registerIfReady();
-
         running = true;
-        Thread heartbeat = new Thread(() ->
-        {
+
+        Thread heartbeat = new Thread(() -> {
             while (running)
             {
                 try
                 {
-                    // Debug hook
-                    System.out.println("[HEARTBEAT] client=" + clientInstance
+                    System.out.println("[HEARTBEAT] client="
+                            + (clientInstance != null)
                             + (clientInstance != null ? " state=" + clientInstance.getGameState() : ""));
 
-                    ScriptManager.registerIfReady();  // Force register
-
-                    for (Runnable script : scripts)
+                    if (clientInstance != null
+                            && clientInstance.getGameState() == GameState.LOGGED_IN)
                     {
-                        try { script.run(); } catch (Throwable t) { t.printStackTrace(); }
+                        ScriptManager.registerIfReady();
                     }
-                    Thread.sleep(600);  // Match game tick
+
+                    for (Runnable r : scripts)
+                    {
+                        try { r.run(); }
+                        catch (Throwable t) { t.printStackTrace(); }
+                    }
+
+                    Thread.sleep(600); // game tick
                 }
                 catch (InterruptedException ignored) {}
             }
         }, "Agent-Heartbeat");
 
-
         heartbeat.setDaemon(true);
         heartbeat.start();
     }
 
-    public static void shutdown()
-    {
-        running = false;
-    }
-
+    // =======================
+    // ACTIONS
+    // =======================
     public static void attackNpc(NPC npc)
     {
         if (clientInstance == null || npc == null) return;
@@ -283,7 +285,7 @@ public class Agent
             tryFwCapture();
             if (fwAMethod == null)
             {
-                System.out.println("[AGENT] Cannot attack: fw.a not cached yet");
+                System.out.println("[AGENT] Cannot attack: fw.a not cached");
                 return;
             }
         }
@@ -291,18 +293,18 @@ public class Agent
         Player p = clientInstance.getLocalPlayer();
         if (p == null) return;
 
-        WorldPoint ploc = p.getWorldLocation();
-        WorldPoint nloc = npc.getWorldLocation();
-        if (ploc == null || nloc == null) return;
+        WorldPoint pl = p.getWorldLocation();
+        WorldPoint nl = npc.getWorldLocation();
+        if (pl == null || nl == null) return;
 
-        if (ploc.distanceTo(nloc) > 1) return;
+        if (pl.distanceTo(nl) > 1) return;
 
         try
         {
             fwAMethod.invoke(
                     null,
-                    ploc.getX(),
-                    ploc.getY(),
+                    pl.getX(),
+                    pl.getY(),
                     20,
                     npc.getIndex(),
                     0,
@@ -312,11 +314,12 @@ public class Agent
                     -1,
                     -1
             );
-            System.out.println("[AGENT] ATTACK EXECUTED on " + npc.getIndex());
+
+            System.out.println("[AGENT] ATTACK EXECUTED -> npc=" + npc.getIndex());
         }
-        catch (Throwable ex)
+        catch (Throwable t)
         {
-            System.err.println("[AGENT] Attack failed: " + ex.getClass().getSimpleName() + ": " + ex.getMessage());
+            System.err.println("[AGENT] Attack failed: " + t.getMessage());
         }
     }
 }
