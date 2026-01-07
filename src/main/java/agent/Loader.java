@@ -10,7 +10,10 @@ public class Loader {
                 polls++;
                 if (Agent.clientInstance != null) {
                     System.out.println("[Loader] Client found after " + polls + " polls, registering scripts...");
-                    agent.examples.GoblinFighter.register(Agent.clientInstance);
+
+                    // Directly register GoblinFighter Runnable
+                    Agent.registerScript(new agent.examples.GoblinFighter(Agent.clientInstance));
+
                     return;
                 }
 
