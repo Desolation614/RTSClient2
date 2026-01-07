@@ -1,7 +1,8 @@
-package scripts;
+package agent.examples;
 
 import agent.Agent;
 import agent.scripting.Script;
+import agent.scripting.ScriptManager;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
@@ -12,7 +13,9 @@ import java.util.List;
 public class GoblinFighter extends Script {
 
     private final Client client;
-    private final int GOBLIN_ID = 9857;
+
+    // Optional: distance within which to attack
+    private final int MAX_DISTANCE = 5;
 
     public GoblinFighter(Client client) {
         super("GoblinFighter");
@@ -32,25 +35,32 @@ public class GoblinFighter extends Script {
         if (localPlayer == null) return;
 
         WorldPoint playerLoc = localPlayer.getWorldLocation();
+
+        // Get all NPCs from RuneLite (read-only)
         List<NPC> npcs = client.getNpcs();
 
         for (NPC npc : npcs) {
             if (npc == null) continue;
-            if (npc.getId() != GOBLIN_ID) continue;
-            if (npc.getHealthRatio() <= 0) continue; // skip dead
+            if (npc.getHealthRatio() <= 0) continue; // skip dead NPCs
+            if (!npc.getName().equalsIgnoreCase("Goblin")) continue; // target goblins only
 
             WorldPoint npcLoc = npc.getWorldLocation();
-            if (npcLoc.distanceTo(playerLoc) > 1) continue;
+            if (npcLoc.distanceTo(playerLoc) > MAX_DISTANCE) continue;
 
-            // Attack using Agent
+            // Attack using fw.a(...) via Agent helper
             Agent.attackNpc(npc);
 
-            System.out.println("[GoblinFighter] Attacking goblin " + npc.getIndex());
+            System.out.println("[GoblinFighter] Attacking goblin index=" + npc.getIndex() + " id=" + npc.getId());
         }
     }
 
     @Override
     public void onStop() {
         System.out.println("[GoblinFighter] Script stopped");
+    }
+
+    // Optional: register automatically when class is loaded
+    public static void register(Client client) {
+        ScriptManager.register(new GoblinFighter(client));
     }
 }
