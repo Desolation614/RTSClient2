@@ -4,10 +4,11 @@ public class Loader {
     public static void init() {
         System.out.println("[Loader] Initializing scripts...");
 
-        // Register immediately - Agent.heartbeat handles null-safety
-        Agent.registerScript(new agent.examples.GoblinFighter());
+        // Register GoblinFighter via ScriptManager (handles readiness)
+        // Agent.heartbeat already runs - ScriptManager checks client state
+        agent.scripting.ScriptManager.registerIfReady();
 
-        // Optional: heartbeat confirmation
+        // Confirmation thread
         new Thread(() -> {
             int polls = 0;
             while (polls < 100) {

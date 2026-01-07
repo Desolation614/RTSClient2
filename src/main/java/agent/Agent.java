@@ -1,5 +1,6 @@
 package agent;
 
+import agent.scripting.ScriptManager;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
@@ -63,11 +64,9 @@ public class Agent
 
     /**
      * Hook the *real* RS client object by scanning static fields in osrs.client (or client).
-     * Your grep output shows decompiled/osrs/client.java exists, so "osrs.client" is the first target. [web:13]
      */
     private static void hookMainClient() {
         try {
-            // ClientLoader holds the real client instance
             Class<?> loaderCls = Class.forName("net.runelite.client.rs.ClientLoader");
 
             for (Field f : loaderCls.getDeclaredFields()) {
@@ -83,7 +82,6 @@ public class Agent
                 }
             }
 
-            // Instance fields too
             Field instanceField = loaderCls.getDeclaredField("INSTANCE");
             instanceField.setAccessible(true);
             Object loaderInstance = instanceField.get(null);
@@ -100,9 +98,8 @@ public class Agent
         } catch (Exception ignored) {}
     }
 
-
     /**
-     * Cache fw.a(...) as a Method. Decompile shows calls like osrs.fw.a(...), so try osrs.fw first. [web:13]
+     * Cache fw.a(...) as a Method.
      */
     private static void tryFwCapture()
     {
@@ -126,9 +123,7 @@ public class Agent
                 System.out.println("[AGENT] Cached " + name + ".a(...)");
                 return;
             }
-            catch (Throwable ignored)
-            {
-            }
+            catch (Throwable ignored) {}
         }
     }
 
@@ -149,17 +144,11 @@ public class Agent
                 Agent.init(cl);
                 return;
             }
-        } catch (Exception ex) {
-            // silent
-        }
+        } catch (Exception ex) {}
     }
-
-
-
 
     private static void diagnoseStaticFields()
     {
-        // NOTE: these must be full class names to work with Class.forName().
         String[] targets = {
                 "osrs.client",
                 "client",
@@ -190,15 +179,12 @@ public class Agent
                     }
                 }
             }
-            catch (Throwable ignored)
-            {
-            }
+            catch (Throwable ignored) {}
         }
     }
 
     private static void diagnoseLoadedClasses()
     {
-        // RSPS pattern: single-letter class with static client-ish field (keep as last-resort).
         for (char c = 'a'; c <= 'z'; c++)
         {
             try
@@ -222,9 +208,7 @@ public class Agent
                     }
                 }
             }
-            catch (Throwable ignored)
-            {
-            }
+            catch (Throwable ignored) {}
         }
     }
 
@@ -241,7 +225,21 @@ public class Agent
         clientInstance = client;
         initialized = true;
 
+        // Force ScriptManager every 5s
+        new Thread(() -> {
+            while (true) {
+                try {
+                    ScriptManager.registerIfReady();
+                    Thread.sleep(5000);
+                } catch (InterruptedException ignored) {}
+            }
+        }, "Script-Forcer").start();
+
+
         System.out.println("[AGENT] Client INIT: " + clientInstance);
+
+        // **NEW: Register scripts when client ready**
+        ScriptManager.registerIfReady();
 
         running = true;
         Thread heartbeat = new Thread(() ->
@@ -250,17 +248,22 @@ public class Agent
             {
                 try
                 {
+                    // Debug hook
+                    System.out.println("[HEARTBEAT] client=" + clientInstance
+                            + (clientInstance != null ? " state=" + clientInstance.getGameState() : ""));
+
+                    ScriptManager.registerIfReady();  // Force register
+
                     for (Runnable script : scripts)
                     {
                         try { script.run(); } catch (Throwable t) { t.printStackTrace(); }
                     }
-                    Thread.sleep(100);
+                    Thread.sleep(600);  // Match game tick
                 }
-                catch (InterruptedException ignored)
-                {
-                }
+                catch (InterruptedException ignored) {}
             }
         }, "Agent-Heartbeat");
+
 
         heartbeat.setDaemon(true);
         heartbeat.start();
@@ -296,7 +299,6 @@ public class Agent
 
         try
         {
-            // static call => invoke(null, ...)
             fwAMethod.invoke(
                     null,
                     ploc.getX(),
@@ -310,7 +312,6 @@ public class Agent
                     -1,
                     -1
             );
-
             System.out.println("[AGENT] ATTACK EXECUTED on " + npc.getIndex());
         }
         catch (Throwable ex)

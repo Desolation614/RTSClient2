@@ -7,25 +7,23 @@ import java.util.List;
 
 public class ScriptManager {
     private static final List<Script> scripts = new ArrayList<>();
-    private static boolean registeredGoblinFighter = false;  // Prevent duplicates
+    private static boolean registeredGoblinFighter = false;
 
     public static void register(Script script) {
         scripts.add(script);
         System.out.println("[ScriptManager] Registered: " + script.getClass().getSimpleName());
     }
 
-    // NEW: Safe registration for GoblinFighter - called from client tick
     public static void registerIfReady() {
-        if (registeredGoblinFighter) return;  // Already done
-
-        Client client = getClient();  // Assume getClient() exists from RuneLite hook
-        if (client == null || client.getGameState() != GameState.LOGGEDIN || client.getNpcs() == null) {
-            return;  // Not ready yet
+        if (registeredGoblinFighter) return;
+        Client client = agent.Agent.clientInstance;
+        if (client == null || client.getGameState() != GameState.LOGGED_IN || client.getNpcs() == null) {
+            return;
         }
-
-        register(new GoblinFighter());
+        register(new agent.scripting.examples.GoblinFighter());
         registeredGoblinFighter = true;
         System.out.println("[ScriptManager] GoblinFighter registered - client ready");
+        ScriptManager.startAll();
     }
 
     public static void startAll() {
@@ -46,10 +44,5 @@ public class ScriptManager {
         }
         scripts.clear();
         registeredGoblinFighter = false;
-    }
-
-    // Helper - replace with your actual client accessor
-    private static Client getClient() {
-        return net.runelite.api.ClientThread.INSTANCE.get();  // Or your hook
     }
 }
