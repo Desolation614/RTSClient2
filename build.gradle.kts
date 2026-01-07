@@ -54,15 +54,26 @@ tasks.named<JavaExec>("run") {
     jvmArgs("-javaagent:${tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath}")
 }
 
-// Run RuneLite client with agent attached
 tasks.register<JavaExec>("runClient") {
     dependsOn(tasks.named("jar"))
     classpath = files(
         fileTree(System.getProperty("user.home") + "/.ferox/repository2/").include("*.jar")
     )
     mainClass.set("net.runelite.client.RuneLite")
+
+    // Attach your agent
     jvmArgs("-javaagent:${tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath}")
+
+    // Add JVM module opens for deep reflection
+    jvmArgs(
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
+    )
+
+    // Optional: heap / debugging flags if needed
+    // jvmArgs("-Xmx2G")
 }
+
 
 
 // Helper to dump classpath
