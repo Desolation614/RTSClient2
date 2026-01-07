@@ -6,6 +6,8 @@ plugins {
     application
 }
 
+
+
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(17))
@@ -27,6 +29,15 @@ dependencies {
     ))
 }
 
+tasks.named<org.gradle.jvm.tasks.Jar>("jar") {
+    manifest {
+        attributes(
+            "Premain-Class" to "agent.Agent",
+            "Can-Redefine-Classes" to "true",
+            "Can-Retransform-Classes" to "true"
+        )
+    }
+}
 
 
 application {
@@ -34,11 +45,14 @@ application {
 }
 
 
-tasks.named<JavaExec>("run") {
-    jvmArgs(
-        "-javaagent:${layout.buildDirectory.file("libs/RTSClient2.jar").get().asFile.absolutePath}"
-    )
+
+val agentJar = tasks.named<org.gradle.jvm.tasks.Jar>("jar").flatMap { it.archiveFile }
+
+tasks.named<org.gradle.api.tasks.JavaExec>("run") {
+    dependsOn(tasks.named("jar"))
+    jvmArgs("-javaagent:${agentJar.get().asFile.absolutePath}")
 }
+
 
 
 tasks.register("dumpCp") {

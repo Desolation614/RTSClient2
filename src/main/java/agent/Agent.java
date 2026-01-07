@@ -6,6 +6,7 @@ import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 
+import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,18 +16,25 @@ public class Agent {
     private static final List<Runnable> scripts = new ArrayList<>();
     private static boolean running = false;
 
+    // --- javaagent entrypoint ---
+    public static void premain(String agentArgs, Instrumentation inst) {
+        System.out.println("[AGENT] premain called, instrumentation=" + inst);
+        // You can set up transformers here if you need them later.
+        // For now this just proves the agent loaded.
+    }
+
     // Register a script/plugin
     public static void registerScript(Runnable r) {
         scripts.add(r);
         System.out.println("[AGENT] Script registered: " + r.getClass().getName());
     }
 
-    // Initialize for offline/standalone
+    // Initialize for offline/standalone (called from your hook once you have Client)
     public static void init(Client client) {
         clientInstance = client;
         System.out.println("[AGENT] Client hooked: " + clientInstance);
 
-        Loader.init(); // any initialization logic
+        Loader.init();
 
         running = true;
         Thread heartbeat = new Thread(() -> {
@@ -39,7 +47,7 @@ public class Agent {
                             ex.printStackTrace();
                         }
                     }
-                    Thread.sleep(100); // 10 ticks
+                    Thread.sleep(100);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -54,8 +62,6 @@ public class Agent {
         running = false;
     }
 
-    // Attack an NPC using RuneLite's menu system
-// Attack an NPC using injected-client executor (deterministic, no menu/click path)
     public static void attackNpc(NPC npc) {
         if (clientInstance == null || npc == null) {
             System.out.println("[AGENT] Client or NPC is null!");
@@ -73,7 +79,6 @@ public class Agent {
             return;
         }
 
-        // Keep your range gate (adjust later when you add pathing)
         if (playerLoc.distanceTo(npcLoc) > 1) {
             return;
         }
@@ -82,10 +87,10 @@ public class Agent {
             fw.a(
                     playerLoc.getX(),
                     playerLoc.getY(),
-                    20,             // NPC attack opcode
-                    npc.getIndex(),  // npc index
+                    20,
+                    npc.getIndex(),
                     0,
-                    npc.getId(),     // npc id
+                    npc.getId(),
                     "Attack",
                     npc.getName(),
                     -1,
