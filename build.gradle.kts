@@ -40,9 +40,16 @@ tasks.register("dumpCp") {
         configurations.getByName("compileClasspath").files.forEach { println(it.absolutePath) }
     }
 }
-
-
-tasks.withType<JavaCompile> {
+tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(17)
+
+    // force javac to actually emit warning lines
+    options.isWarnings = true
+
+    // show where deprecated/unchecked are used
+    options.compilerArgs.addAll(listOf(
+        "-Xlint:deprecation",
+        "-Xlint:unchecked"
+    ))
 }
