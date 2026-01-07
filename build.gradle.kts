@@ -11,13 +11,16 @@ java {
 
 repositories {
     mavenCentral()
+    flatDir {
+        dirs("libs")  // <-- your local JARs folder
+    }
 }
 
 dependencies {
-    implementation(files("libs/injected-client.jar"))
-    implementation(files("libs/runelite-api.jar"))
-    implementation(files("libs/client-57b3fe11d3.jar"))
-    implementation(files("libs/feroxlauncher.jar"))
+    implementation(":runelite-api:")
+    implementation(":injected-client:")
+    implementation(":client:")
+    implementation(":feroxlauncher:")
 }
 
 application {
