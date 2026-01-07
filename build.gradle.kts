@@ -12,10 +12,16 @@ java {
 }
 
 repositories {
-    flatDir { dirs("libs") }
+    flatDir { dirs("libs") }  // local jars
+    mavenCentral()            // fetch ASM
 }
 
 dependencies {
+    // ASM for instrumentation
+    implementation("org.ow2.asm:asm:9.5")
+    implementation("org.ow2.asm:asm-commons:9.5")
+
+    // Local jars
     implementation(files(
         "libs/runelite-api.jar",
         "libs/runescape-api.jar",
@@ -26,7 +32,13 @@ dependencies {
     ))
 }
 
-tasks.named<org.gradle.jvm.tasks.Jar>("jar") {
+// =======================
+// Build fat agent jar (includes ASM + all dependencies)
+// =======================
+tasks.named<Jar>("jar") {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // Include runtime classpath (ASM + local jars)
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
     manifest {
         attributes(
             "Premain-Class" to "agent.Agent",
@@ -36,25 +48,34 @@ tasks.named<org.gradle.jvm.tasks.Jar>("jar") {
     }
 }
 
-application {
-    mainClass.set("net.runelite.launcher.Launcher")
+// Vanilla run (optional)
+tasks.named<JavaExec>("run") {
+    dependsOn(tasks.named("jar"))
+    jvmArgs("-javaagent:${tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath}")
 }
 
-val agentJar = tasks.named<org.gradle.jvm.tasks.Jar>("jar").flatMap { it.archiveFile }
+// -----------------------
+// Run RuneLite client with optional agent
+// -----------------------
+val useAgent: String? by project  // pass -PuseAgent=true to attach
 
-tasks.named<org.gradle.api.tasks.JavaExec>("run") {
+tasks.register<JavaExec>("runClient") {
     dependsOn(tasks.named("jar"))
-    jvmArgs("-javaagent:${agentJar.get().asFile.absolutePath}")
-}
-
-tasks.register<org.gradle.api.tasks.JavaExec>("runClient") {
-    dependsOn(tasks.named("jar"))
-    // Copy launcher’s full classpath from ~/.ferox/repository2/
-    classpath = files(fileTree(System.getProperty("user.home") + "/.ferox/repository2/").include("*.jar")) + files(agentJar.get().asFile)
+    classpath = files(
+        fileTree(System.getProperty("user.home") + "/.ferox/repository2/").include("*.jar")
+    )
     mainClass.set("net.runelite.client.RuneLite")
-    jvmArgs("-javaagent:${agentJar.get().asFile.absolutePath}")
+
+    if (useAgent == "true") {
+        val jarFile = tasks.named<Jar>("jar").get().archiveFile.get().asFile
+        println("Attaching javaagent: $jarFile")
+        jvmArgs("-javaagent:$jarFile")
+    } else {
+        println("Running RuneLite client WITHOUT agent")
+    }
 }
 
+// Helper to dump classpath
 tasks.register("dumpCp") {
     doLast {
         println("implementation deps = " + configurations.getByName("implementation").dependencies.joinToString())
@@ -63,6 +84,7 @@ tasks.register("dumpCp") {
     }
 }
 
+// Compiler options
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(17)

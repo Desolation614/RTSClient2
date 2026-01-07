@@ -25,12 +25,23 @@ public class Agent
     // Cached internal executor
     private static volatile Method fwAMethod = null;
 
+    // Store Instrumentation for ASM/Loader hooks
+    private static volatile Instrumentation instrumentation;
+
+    public static Instrumentation getInstrumentation() {
+        return instrumentation;
+    }
+
     // =======================
     // premain ENTRYPOINT
     // =======================
     public static void premain(String agentArgs, Instrumentation inst)
     {
         System.out.println("[AGENT] premain - HUNTING CLIENT");
+
+        // Store instrumentation for later access
+        instrumentation = inst;
+
         Loader.init();
 
         new Thread(() -> {
