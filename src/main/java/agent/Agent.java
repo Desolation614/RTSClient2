@@ -65,43 +65,41 @@ public class Agent
      * Hook the *real* RS client object by scanning static fields in osrs.client (or client).
      * Your grep output shows decompiled/osrs/client.java exists, so "osrs.client" is the first target. [web:13]
      */
-    private static void hookMainClient()
-    {
-        if (initialized) return;
+    private static void hookMainClient() {
+        try {
+            // ClientLoader holds the real client instance
+            Class<?> loaderCls = Class.forName("net.runelite.client.rs.ClientLoader");
 
-        String[] candidates = new String[] { "osrs.client", "client" };
-
-        for (String className : candidates)
-        {
-            try
-            {
-                Class<?> cls = Class.forName(className);
-
-                for (Field f : cls.getDeclaredFields())
-                {
-                    if (!Modifier.isStatic(f.getModifiers()))
-                        continue;
-
+            for (Field f : loaderCls.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) {
                     f.setAccessible(true);
-                    Object v = f.get(null);
-
-                    // Don't trust declared type (obfuscation), trust runtime value.
-                    if (v != null && Client.class.isInstance(v))
-                    {
-                        clientInstance = (Client) v;
-                        System.out.println("[AGENT] HOOKED main client via " + className + "." + f.getName());
-
-                        init(clientInstance);
+                    Object obj = f.get(null);
+                    if (obj instanceof Client cl) {
+                        Agent.clientInstance = cl;
+                        System.out.println("[AGENT] HOOKED ClientLoader." + f.getName());
+                        Agent.init(cl);
                         return;
                     }
                 }
             }
-            catch (Throwable ignored)
-            {
-                // silent: class not loaded yet or inaccessible this poll
+
+            // Instance fields too
+            Field instanceField = loaderCls.getDeclaredField("INSTANCE");
+            instanceField.setAccessible(true);
+            Object loaderInstance = instanceField.get(null);
+            for (Field f : loaderCls.getDeclaredFields()) {
+                f.setAccessible(true);
+                Object obj = f.get(loaderInstance);
+                if (obj instanceof Client cl) {
+                    Agent.clientInstance = cl;
+                    System.out.println("[AGENT] HOOKED ClientLoader.INSTANCE." + f.getName());
+                    Agent.init(cl);
+                    return;
+                }
             }
-        }
+        } catch (Exception ignored) {}
     }
+
 
     /**
      * Cache fw.a(...) as a Method. Decompile shows calls like osrs.fw.a(...), so try osrs.fw first. [web:13]
@@ -146,15 +144,16 @@ public class Agent
             Object obj = clientField.get(runeLiteInstance);
 
             if (obj instanceof Client cl) {
-                clientInstance = cl;
+                Agent.clientInstance = cl;
                 System.out.println("[AGENT] HOOKED RuneLite.INSTANCE.client");
-                init(clientInstance);
+                Agent.init(cl);
                 return;
             }
-        } catch (Exception ignored) {
-            // silent fail
+        } catch (Exception ex) {
+            // silent
         }
     }
+
 
 
 
