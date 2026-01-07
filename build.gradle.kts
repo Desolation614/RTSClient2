@@ -54,26 +54,16 @@ tasks.named<JavaExec>("run") {
     jvmArgs("-javaagent:${tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath}")
 }
 
-// -----------------------
-// Run RuneLite client with optional agent
-// -----------------------
-val useAgent: String? by project  // pass -PuseAgent=true to attach
-
+// Run RuneLite client with agent attached
 tasks.register<JavaExec>("runClient") {
     dependsOn(tasks.named("jar"))
     classpath = files(
         fileTree(System.getProperty("user.home") + "/.ferox/repository2/").include("*.jar")
     )
     mainClass.set("net.runelite.client.RuneLite")
-
-    if (useAgent == "true") {
-        val jarFile = tasks.named<Jar>("jar").get().archiveFile.get().asFile
-        println("Attaching javaagent: $jarFile")
-        jvmArgs("-javaagent:$jarFile")
-    } else {
-        println("Running RuneLite client WITHOUT agent")
-    }
+    jvmArgs("-javaagent:${tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath}")
 }
+
 
 // Helper to dump classpath
 tasks.register("dumpCp") {
