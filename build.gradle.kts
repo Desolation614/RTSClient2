@@ -33,6 +33,14 @@ application {
     mainClass.set("net.runelite.launcher.Launcher")
 }
 
+
+tasks.named<JavaExec>("run") {
+    jvmArgs(
+        "-javaagent:${layout.buildDirectory.file("libs/RTSClient2.jar").get().asFile.absolutePath}"
+    )
+}
+
+
 tasks.register("dumpCp") {
     doLast {
         println("implementation deps = " + configurations.getByName("implementation").dependencies.joinToString())
@@ -40,6 +48,7 @@ tasks.register("dumpCp") {
         configurations.getByName("compileClasspath").files.forEach { println(it.absolutePath) }
     }
 }
+
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(17)
