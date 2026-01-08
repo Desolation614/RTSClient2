@@ -24,13 +24,16 @@ dependencies {
 
     // Local jars
     implementation(files(
-        "libs/runelite-api.jar",
+        "libs/runelite-api.jar",  // Ensure this path is correct
         "libs/runescape-api.jar",
         "libs/injected-client.jar",
         "libs/client.jar",
         "libs/feroxlauncher.jar",
         "libs/okhttp-3.14.9.jar"
     ))
+
+    // Add 'runelite-api.jar' explicitly to the compileClasspath if not already included
+    compileOnly(files("libs/runelite-api.jar"))
 }
 
 // =======================
@@ -61,7 +64,8 @@ tasks.named<JavaExec>("run") {
 tasks.register<JavaExec>("runClient") {
     dependsOn(tasks.named("jar"))
     classpath = files(
-        fileTree(System.getProperty("user.home") + "/.ferox/repository2/").include("*.jar")
+        fileTree(System.getProperty("user.home") + "/.ferox/repository2/").include("*.jar"),
+        "libs/runelite-api.jar"  // Ensure this is included in the classpath
     )
     mainClass.set("net.runelite.client.RuneLite")
 

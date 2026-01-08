@@ -5,8 +5,7 @@ import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.GameState;
-import agent.scripting.scripts.NPCDiscovery;
-import agent.scripting.scripts.NPCTestScript;
+import agent.scripting.scripts.GoblinPrinter;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
@@ -23,24 +22,17 @@ public class Agent {
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[AGENT] premain - initializing agent");
         instrumentation = inst;
-
         Loader.init();
 
-        // Try to hook client via static field scan
         new Thread(() -> {
             int attempts = 0;
             while (!initialized && attempts < 2000) {
                 attempts++;
                 hookMainClient();
                 tryFwCapture();
-
                 if (attempts % 20 == 0) {
-                    System.out.println("[AGENT] #" + attempts +
-                            " client=" + (clientInstance != null) +
-                            " fw.a=" + (fwAMethod != null) +
-                            " initialized=" + initialized);
+                    System.out.println("[AGENT] #" + attempts + " client=" + (clientInstance != null) + " fw.a=" + (fwAMethod != null));
                 }
-
                 try { Thread.sleep(100); } catch (InterruptedException ignored) {}
             }
         }, "Client-Hunter").start();
@@ -55,7 +47,7 @@ public class Agent {
                         f.setAccessible(true);
                         Object clientObj = f.get(null);
                         if (clientObj != null) {
-                            System.out.println("[AGENT] HOOKED Client via static field scan: " + cls.getName());
+                            System.out.println("[AGENT] HOOKED Client: " + cls.getName());
                             init((Client) clientObj);
                             return;
                         }
@@ -69,16 +61,11 @@ public class Agent {
 
     private static void tryFwCapture() {
         if (fwAMethod != null) return;
-
         String[] names = {"osrs.fw", "fw", "osrs.fW", "fW"};
         for (String name : names) {
             try {
                 Class<?> fwCls = Class.forName(name);
-                Method m = fwCls.getDeclaredMethod(
-                        "a",
-                        int.class, int.class, int.class, int.class, int.class, int.class,
-                        String.class, String.class, int.class, int.class
-                );
+                Method m = fwCls.getDeclaredMethod("a", int.class, int.class, int.class, int.class, int.class, int.class, String.class, String.class, int.class, int.class);
                 m.setAccessible(true);
                 fwAMethod = m;
                 System.out.println("[AGENT] Cached " + name + ".a(...)");
@@ -92,49 +79,44 @@ public class Agent {
         clientInstance = client;
         initialized = true;
         running = true;
-
-        System.out.println("[AGENT] Client INIT: " + clientInstance);
-
-        // *** NEW: Initialize NPC discovery ***
-        NPCDiscovery.init();
-
+        System.out.println("[AGENT] Client hooked and ready");
         startHeartbeat();
     }
 
+    // In Agent.java startHeartbeat() - replace the whole method:
     private static void startHeartbeat() {
         Thread heartbeat = new Thread(() -> {
-            boolean scriptRegistered = false;  // *** NEW: Track registration ***
+            GoblinPrinter goblinScript = null;
+            int tickCount = 0;
 
             while (running) {
                 try {
-                    if (clientInstance != null) {
-                        System.out.println("[HEARTBEAT] client=true state=" + clientInstance.getGameState());
-
-                        // *** NEW: Register NPC test script on first login ***
-                        if (!scriptRegistered && clientInstance.getGameState() == GameState.LOGGED_IN) {
-                            ScriptManager.register(new NPCTestScript());
-                            scriptRegistered = true;
-                            System.out.println("[AGENT] Registered NPCTestScript");
-                        }
+                    tickCount++;
+                    if (clientInstance != null && tickCount % 10 == 0) {
+                        System.out.println("[HEARTBEAT] state=" + clientInstance.getGameState());
                     }
 
                     if (clientInstance != null && clientInstance.getGameState() == GameState.LOGGED_IN) {
-                        ScriptManager.registerIfReady();
-                        ScriptManager.tickAll();
+                        if (goblinScript == null) {
+                            goblinScript = new GoblinPrinter();
+                            goblinScript.onStart();
+                            System.out.println("[AGENT] GoblinPrinter direct");
+                        } else {
+                            // Nuclear force output
+                            System.out.println("[DIRECT] Tick #" + tickCount + " NPCs=" + (clientInstance.getNpcs() != null ? clientInstance.getNpcs().size() : "null"));
+                        }
+                        goblinScript.onTick();
                     }
 
                     Thread.sleep(600);
                 } catch (InterruptedException ignored) {}
             }
         }, "Agent-Heartbeat");
-
         heartbeat.setDaemon(true);
         heartbeat.start();
     }
 
-    // =======================
-    // ATTACK METHOD
-    // =======================
+
     public static void attackNpc(NPC npc) {
         if (clientInstance == null || npc == null) return;
         if (fwAMethod == null) {
@@ -144,61 +126,36 @@ public class Agent {
                 return;
             }
         }
-
         Player p = clientInstance.getLocalPlayer();
         if (p == null) return;
-
         WorldPoint nl = npc.getWorldLocation();
         if (nl == null) return;
-
         try {
-            fwAMethod.invoke(
-                    null,
-                    nl.getX(),
-                    nl.getY(),
-                    9,                 // NPC attack opcode (Ferox)
-                    npc.getIndex(),
-                    0,
-                    npc.getId(),
-                    "Attack",
-                    npc.getName(),
-                    -1,
-                    -1
-            );
-            System.out.println("[AGENT] ATTACK EXECUTED -> npc idx=" + npc.getIndex());
+            fwAMethod.invoke(null, nl.getX(), nl.getY(), 9, npc.getIndex(), 0, npc.getId(), "Attack", npc.getName(), -1, -1);
+            System.out.println("[AGENT] ATTACK -> npc idx=" + npc.getIndex());
         } catch (Throwable t) {
-            System.err.println("[AGENT] Attack failed");
-            t.printStackTrace();
+            System.err.println("[AGENT] Attack failed: " + t.getMessage());
         }
     }
 
-    // =======================
-    // CLIENT THREAD HELPER
-    // =======================
     public static void runOnClientThread(Runnable task) {
         if (clientInstance == null) return;
-
         try {
-            // Cast to decompiled client to access fw and isClientThread
             osrs.client decompiledClient = (osrs.client) clientInstance;
-
             if (decompiledClient.fw != null) {
                 decompiledClient.fw.submit(() -> {
                     try {
                         if (!decompiledClient.isClientThread()) return;
                         task.run();
                     } catch (Throwable t) {
-                        System.err.println("[AGENT] runOnClientThread failed");
-                        t.printStackTrace();
+                        System.err.println("[AGENT] ClientThread error: " + t.getMessage());
                     }
                 });
             } else {
-                // fallback: run immediately (may throw assertion if not client thread)
                 task.run();
             }
         } catch (ClassCastException e) {
-            System.err.println("[AGENT] clientInstance is not decompiled client class!");
-            e.printStackTrace();
+            System.err.println("[AGENT] Not decompiled client");
         }
     }
 }

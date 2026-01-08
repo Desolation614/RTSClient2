@@ -6,7 +6,7 @@ public class Loader {
 
         // Register GoblinFighter via ScriptManager (handles readiness)
         // Agent.heartbeat already runs - ScriptManager checks client state
-        ScriptManager.registerIfReady();
+        //ScriptManager.registerIfReady();
 
         // Confirmation thread
         new Thread(() -> {
