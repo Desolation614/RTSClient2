@@ -1,15 +1,17 @@
 package agent.scripting.scripts;
 import agent.scripting.scripts.Script;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * NPCTestScript - Test script that discovers NPCs every 10 ticks
- * 
+ *
  * Usage:
  *   1. Call NPCDiscovery.init() once at startup
  *   2. Register this script: ScriptManager.register(new NPCTestScript())
  *   3. Script will tick every ~600ms and discover NPCs every 10 ticks
- * 
+ *
  * Expected output:
  *   [NPC-TEST] ========== NPC Discovery Cycle ========== (tick 10)
  *   [NPC-TEST] Total NPCs found: 5
@@ -35,26 +37,31 @@ public class NPCTestScript implements Script {
     }
 
     private void discoverAndPrintNPCs() {
-        System.out.println(TAG + " ========== NPC Discovery Cycle ========== (tick " + tickCounter + ")");
-
         try {
-            List<NPCDiscovery.NPCData> npcs = NPCDiscovery.discoverNPCs();
+            // Get all NPCs
+            List<NPCDiscovery.NPCData> allNPCs = NPCDiscovery.discoverNPCs();
 
-            System.out.println(TAG + " Total NPCs found: " + npcs.size());
-            System.out.println(TAG + " ===== NPC List =====");
-
-            for (NPCDiscovery.NPCData npc : npcs) {
-                System.out.println(TAG + "   " + npc);
+            // Filter goblins
+            List<NPCDiscovery.NPCData> goblins = new ArrayList<>();
+            for (NPCDiscovery.NPCData npc : allNPCs) {
+                if (npc.name != null && npc.name.equalsIgnoreCase("Goblin")) {
+                    goblins.add(npc);
+                }
             }
 
-            System.out.println(TAG + " ===== END =====");
-            System.out.println(TAG + " ==========================================");
+            System.out.println(TAG + " GOBLINS around you: " + goblins.size());
+
+            // Optional: list positions
+            for (NPCDiscovery.NPCData goblin : goblins) {
+                System.out.println(TAG + "  " + goblin);
+            }
 
         } catch (Exception e) {
             System.err.println(TAG + " Discovery cycle failed: " + e.getMessage());
             e.printStackTrace();
         }
     }
+
 
     @Override
     public void onStart() {

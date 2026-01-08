@@ -5,18 +5,18 @@ import java.util.*;
 
 /**
  * NPCDiscovery - Runtime NPC discovery via reflection
- * 
+ *
  * Access path (bytecode-verified):
  *   osrs.aM.a (static kd instance)
  *     └─ kd.g (IndexedObjectSet of NPCs)
  *       └─ iterate and extract
- * 
+ *
  * Usage:
  *   NPCDiscovery.init();  // Call once at startup
  *   List<NPCData> npcs = NPCDiscovery.discoverNPCs();
  */
 public class NPCDiscovery {
-    
+
     // Cached reflection lookups
     private static Class<?> amClass;
     private static Field amFieldA;
@@ -27,81 +27,81 @@ public class NPCDiscovery {
     private static Method ggA;
     private static Method ggB;
     private static Field ggBackingArray;
-    
+
     private static boolean initialized = false;
     private static final String TAG = "[NPC-DISCOVERY]";
-    
+
     /**
      * Initialize reflection caches (call once at startup)
      */
     public static void init() {
         if (initialized) return;
-        
+
         try {
             // Find osrs.aM
             amClass = Class.forName("osrs.aM");
             System.out.println(TAG + " Found aM class: " + amClass);
-            
+
             // Find osrs.kd
             kdClass = Class.forName("osrs.kd");
             System.out.println(TAG + " Found kd class: " + kdClass);
-            
+
             // Find osrs.gg
             ggClass = Class.forName("osrs.gg");
             System.out.println(TAG + " Found gg class: " + ggClass);
-            
+
             // Cache aM.a field (static kd instance)
             amFieldA = amClass.getDeclaredField("a");
             amFieldA.setAccessible(true);
             System.out.println(TAG + " Cached aM.a field");
-            
+
             // Cache kd.g field (NPC container)
             kdFieldG = kdClass.getDeclaredField("g");
             kdFieldG.setAccessible(true);
             System.out.println(TAG + " Cached kd.g field");
-            
+
             // Try to cache gg methods (may not exist)
             try {
                 ggIterator = ggClass.getMethod("iterator");
                 ggIterator.setAccessible(true);
             } catch (NoSuchMethodException ignored) {}
-            
+
             try {
                 ggA = ggClass.getMethod("a");
                 ggA.setAccessible(true);
             } catch (NoSuchMethodException ignored) {}
-            
+
             try {
                 ggB = ggClass.getMethod("b");
                 ggB.setAccessible(true);
             } catch (NoSuchMethodException ignored) {}
-            
+
             // Try to cache backing array field
             try {
                 ggBackingArray = ggClass.getDeclaredField("a");
                 ggBackingArray.setAccessible(true);
             } catch (NoSuchFieldException ignored) {}
-            
+
             initialized = true;
             System.out.println(TAG + " Initialization complete");
-            
+
         } catch (Exception e) {
             System.err.println(TAG + " Initialization failed: " + e.getMessage());
             e.printStackTrace();
         }
     }
-    
+
     /**
      * Discover all NPCs in current world
      */
     public static List<NPCData> discoverNPCs() {
         List<NPCData> result = new ArrayList<>();
-        
+
         if (!initialized) {
             System.err.println(TAG + " Not initialized! Call init() first.");
             return result;
         }
-        
+
         try {
             // Get kd instance from static aM.a
             Object kdInstance = amFieldA.get(null);
@@ -110,7 +110,7 @@ public class NPCDiscovery {
                 return result;
             }
             System.out.println(TAG + " Got kd instance: " + kdInstance.getClass().getSimpleName());
-            
+
             // Get NPC container (gg) from kd.g
             Object ggInstance = kdFieldG.get(kdInstance);
             if (ggInstance == null) {
@@ -118,11 +118,11 @@ public class NPCDiscovery {
                 return result;
             }
             System.out.println(TAG + " Got gg instance (" + ggInstance.getClass().getSimpleName() + ")");
-            
+
             // Count NPCs first
             int npcCount = getNPCCount(ggInstance);
             System.out.println(TAG + " Found " + npcCount + " NPC objects");
-            
+
             // Try standard iterator first
             if (ggIterator != null) {
                 try {
@@ -143,7 +143,7 @@ public class NPCDiscovery {
                     System.out.println(TAG + " [ITERATE] iterator() failed: " + e.getMessage());
                 }
             }
-            
+
             // Try gg.a() / gg.b() pattern (first/next)
             if (ggA != null && ggB != null) {
                 try {
@@ -166,7 +166,7 @@ public class NPCDiscovery {
                     System.out.println(TAG + " [ITERATE] a()/b() failed: " + e.getMessage());
                 }
             }
-            
+
             // Try backing array field
             if (ggBackingArray != null) {
                 try {
@@ -190,17 +190,17 @@ public class NPCDiscovery {
                     System.out.println(TAG + " [ITERATE] Backing array failed: " + e.getMessage());
                 }
             }
-            
+
             System.err.println(TAG + " [ITERATE-ERROR] Could not find working iteration pattern");
-            
+
         } catch (Exception e) {
             System.err.println(TAG + " Discovery failed: " + e.getMessage());
             e.printStackTrace();
         }
-        
+
         return result;
     }
-    
+
     /**
      * Count NPCs in container (for logging)
      */
@@ -211,7 +211,7 @@ public class NPCDiscovery {
                 Method sizeMethod = ggInstance.getClass().getMethod("size");
                 return (int) sizeMethod.invoke(ggInstance);
             } catch (NoSuchMethodException ignored) {}
-            
+
             // Try backing array length
             try {
                 Field backingArray = ggInstance.getClass().getDeclaredField("a");
@@ -221,25 +221,25 @@ public class NPCDiscovery {
                     return array.length;
                 }
             } catch (NoSuchFieldException ignored) {}
-            
+
             // Fallback
             return 0;
         } catch (Exception e) {
             return 0;
         }
     }
-    
+
     /**
      * Extract NPC data from an NPC object
      */
     private static NPCData extractNPCData(Object npc) {
         try {
             if (npc == null) return null;
-            
+
             // Get NPC class (usually osrs.kc or similar)
             Class<?> npcClass = npc.getClass();
             String className = npcClass.getSimpleName();
-            
+
             // Extract ID (usually int id field)
             int id = 0;
             try {
@@ -247,7 +247,7 @@ public class NPCDiscovery {
                 idField.setAccessible(true);
                 id = (int) idField.get(npc);
             } catch (Exception ignored) {}
-            
+
             // Extract name (usually String name field)
             String name = null;
             try {
@@ -255,7 +255,7 @@ public class NPCDiscovery {
                 nameField.setAccessible(true);
                 name = (String) nameField.get(npc);
             } catch (Exception ignored) {}
-            
+
             // Extract position (usually int x, int y or localX, localY)
             int x = 0, y = 0;
             try {
@@ -269,7 +269,7 @@ public class NPCDiscovery {
                     x = (int) xField.get(npc);
                 } catch (Exception ignored) {}
             }
-            
+
             try {
                 Field yField = npcClass.getDeclaredField("y");
                 yField.setAccessible(true);
@@ -281,15 +281,15 @@ public class NPCDiscovery {
                     y = (int) yField.get(npc);
                 } catch (Exception ignored1) {}
             }
-            
+
             return new NPCData(id, name, x, y, className);
-            
+
         } catch (Exception e) {
             System.err.println(TAG + " Failed to extract NPC data: " + e.getMessage());
             return null;
         }
     }
-    
+
     /**
      * NPC data container
      */
@@ -299,7 +299,7 @@ public class NPCDiscovery {
         public int x;
         public int y;
         public String className;
-        
+
         public NPCData(int id, String name, int x, int y, String className) {
             this.id = id;
             this.name = name;
@@ -307,11 +307,11 @@ public class NPCDiscovery {
             this.y = y;
             this.className = className;
         }
-        
+
         @Override
         public String toString() {
             return String.format("NPC{id=%d, name='%s', pos=(%d,%d), class=%s}",
-                id, name != null ? name : "null", x, y, className);
+                    id, name != null ? name : "null", x, y, className);
         }
     }
 }

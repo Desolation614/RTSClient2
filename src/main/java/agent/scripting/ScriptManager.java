@@ -15,7 +15,8 @@ public class ScriptManager {
         if (Agent.clientInstance == null) return;
 
         // register GoblinPrinter with raw client
-        register(new GoblinPrinter(Agent.clientInstance));
+        register(new GoblinPrinter());
+
 
         registeredGoblinFighter = true;
         System.out.println("[ScriptManager] GoblinFighter registered!");
