@@ -66,5 +66,5 @@ public class GoblinPrinter implements Script {
         } catch (Exception e) {
             System.err.println("[GoblinPrinter] Failed to fetch NPCs: " + e);
         }
-    }
+    }//
 }
