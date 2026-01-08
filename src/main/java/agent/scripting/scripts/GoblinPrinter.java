@@ -1,6 +1,4 @@
-package agent.scripting.examples;
-
-import agent.scripting.Script;
+package agent.scripting.scripts;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -66,5 +64,5 @@ public class GoblinPrinter implements Script {
         } catch (Exception e) {
             System.err.println("[GoblinPrinter] Failed to fetch NPCs: " + e);
         }
-    }//
+    }
 }

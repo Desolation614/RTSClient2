@@ -1,4 +1,4 @@
-package agent.scripting;
+package agent.scripting.scripts;
 
 public interface Script {
     void onStart();

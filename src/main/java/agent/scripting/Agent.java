@@ -1,11 +1,12 @@
-package agent;
+package agent.scripting;
 
-import agent.scripting.ScriptManager;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.GameState;
+import agent.scripting.scripts.NPCDiscovery;
+import agent.scripting.scripts.NPCTestScript;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
@@ -93,15 +94,28 @@ public class Agent {
         running = true;
 
         System.out.println("[AGENT] Client INIT: " + clientInstance);
+
+        // *** NEW: Initialize NPC discovery ***
+        NPCDiscovery.init();
+
         startHeartbeat();
     }
 
     private static void startHeartbeat() {
         Thread heartbeat = new Thread(() -> {
+            boolean scriptRegistered = false;  // *** NEW: Track registration ***
+
             while (running) {
                 try {
                     if (clientInstance != null) {
                         System.out.println("[HEARTBEAT] client=true state=" + clientInstance.getGameState());
+
+                        // *** NEW: Register NPC test script on first login ***
+                        if (!scriptRegistered && clientInstance.getGameState() == GameState.LOGGED_IN) {
+                            ScriptManager.register(new NPCTestScript());
+                            scriptRegistered = true;
+                            System.out.println("[AGENT] Registered NPCTestScript");
+                        }
                     }
 
                     if (clientInstance != null && clientInstance.getGameState() == GameState.LOGGED_IN) {

@@ -1,7 +1,7 @@
 package agent.scripting;
 
-import agent.Agent;
-import agent.scripting.examples.GoblinPrinter;
+import agent.scripting.scripts.GoblinPrinter;
+import agent.scripting.scripts.Script;
 
 import java.util.ArrayList;
 import java.util.List;

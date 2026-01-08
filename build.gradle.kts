@@ -42,7 +42,7 @@ tasks.named<Jar>("jar") {
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
     manifest {
         attributes(
-            "Premain-Class" to "agent.Agent",
+            "Premain-Class" to "agent.scripting.Agent",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true"
         )
