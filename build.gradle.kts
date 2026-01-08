@@ -18,6 +18,7 @@ repositories {
 
 dependencies {
     // ASM for instrumentation
+    implementation("org.codehaus.janino:janino:3.1.6")
     implementation("org.ow2.asm:asm:9.5")
     implementation("org.ow2.asm:asm-commons:9.5")
 
@@ -37,8 +38,8 @@ dependencies {
 // =======================
 tasks.named<Jar>("jar") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    // Include runtime classpath (ASM + local jars)
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
     manifest {
         attributes(
             "Premain-Class" to "agent.Agent",
@@ -54,6 +55,9 @@ tasks.named<JavaExec>("run") {
     jvmArgs("-javaagent:${tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath}")
 }
 
+// =======================
+// Run RuneLite client
+// =======================
 tasks.register<JavaExec>("runClient") {
     dependsOn(tasks.named("jar"))
     classpath = files(
@@ -70,11 +74,13 @@ tasks.register<JavaExec>("runClient") {
         "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
     )
 
+    // Enable assertions and developer mode
+    jvmArgs("-ea")
+    args("--developer-mode")
+
     // Optional: heap / debugging flags if needed
     // jvmArgs("-Xmx2G")
 }
-
-
 
 // Helper to dump classpath
 tasks.register("dumpCp") {

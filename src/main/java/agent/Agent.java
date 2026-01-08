@@ -11,81 +11,72 @@ import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 public class Agent {
-
     public static volatile Client clientInstance;
-
-    private static final List<Runnable> scripts = new ArrayList<>();
-    private static volatile boolean running = false;
     private static volatile boolean initialized = false;
-
+    private static volatile boolean running = false;
     private static volatile Method fwAMethod = null;
     private static volatile Instrumentation instrumentation;
 
-    public static Instrumentation getInstrumentation() {
-        return instrumentation;
-    }
-
-    // =======================
-    // premain ENTRYPOINT
-    // =======================
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[AGENT] premain - initializing agent");
         instrumentation = inst;
 
         Loader.init();
 
-        // Static-field client hook (deterministic)
-        hookClientStaticField();
+        // Try to hook client via static field scan
+        new Thread(() -> {
+            int attempts = 0;
+            while (!initialized && attempts < 2000) {
+                attempts++;
+                hookMainClient();
+                tryFwCapture();
 
-        // Cache fw.a method for attacks
-        tryFwCapture();
+                if (attempts % 20 == 0) {
+                    System.out.println("[AGENT] #" + attempts +
+                            " client=" + (clientInstance != null) +
+                            " fw.a=" + (fwAMethod != null) +
+                            " initialized=" + initialized);
+                }
 
-        // Start heartbeat and script runner
-        startHeartbeat();
+                try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+            }
+        }, "Client-Hunter").start();
     }
 
-    // =======================
-    // CLIENT HOOKING
-    // =======================
-    private static void hookClientStaticField() {
+    private static void hookMainClient() {
+        if (initialized) return;
         try {
-            Class<?> dfCls = Class.forName("osrs.dF");
-            Field clientField = dfCls.getDeclaredField("c");
-            clientField.setAccessible(true);
-            Object clientObj = clientField.get(null);
-
-            if (clientObj != null) {
-                System.out.println("[AGENT] HOOKED Client via static field: osrs.dF");
-                init((Client) clientObj);
-            } else {
-                System.out.println("[AGENT] Client field null, waiting...");
+            for (Class<?> cls : instrumentation.getAllLoadedClasses()) {
+                for (Field f : cls.getDeclaredFields()) {
+                    if (Modifier.isStatic(f.getModifiers()) && Client.class.isAssignableFrom(f.getType())) {
+                        f.setAccessible(true);
+                        Object clientObj = f.get(null);
+                        if (clientObj != null) {
+                            System.out.println("[AGENT] HOOKED Client via static field scan: " + cls.getName());
+                            init((Client) clientObj);
+                            return;
+                        }
+                    }
+                }
             }
         } catch (Throwable t) {
-            System.err.println("[AGENT-ERROR] Failed static field hook: " + t);
-            t.printStackTrace();
+            System.out.println("[AGENT-DEBUG] hookMainClient failed: " + t);
         }
     }
 
-    // =======================
-    // fw.a(...) CAPTURE
-    // =======================
     private static void tryFwCapture() {
         if (fwAMethod != null) return;
 
-        String[] names = { "osrs.fw", "fw", "osrs.fW", "fW" };
+        String[] names = {"osrs.fw", "fw", "osrs.fW", "fW"};
         for (String name : names) {
             try {
                 Class<?> fwCls = Class.forName(name);
                 Method m = fwCls.getDeclaredMethod(
                         "a",
-                        int.class, int.class, int.class, int.class, int.class,
-                        int.class, String.class, String.class, int.class, int.class
+                        int.class, int.class, int.class, int.class, int.class, int.class,
+                        String.class, String.class, int.class, int.class
                 );
                 m.setAccessible(true);
                 fwAMethod = m;
@@ -95,38 +86,27 @@ public class Agent {
         }
     }
 
-    // =======================
-    // SCRIPT CORE
-    // =======================
-    public static void registerScript(Runnable r) {
-        scripts.add(r);
-        System.out.println("[AGENT] Script registered: " + r.getClass().getName());
-    }
-
     public static void init(Client client) {
         if (initialized) return;
-
         clientInstance = client;
         initialized = true;
+        running = true;
 
         System.out.println("[AGENT] Client INIT: " + clientInstance);
-
-        running = true;
+        startHeartbeat();
     }
 
     private static void startHeartbeat() {
         Thread heartbeat = new Thread(() -> {
             while (running) {
                 try {
-                    System.out.println("[HEARTBEAT] client=" + (clientInstance != null)
-                            + (clientInstance != null ? " state=" + clientInstance.getGameState() : ""));
+                    if (clientInstance != null) {
+                        System.out.println("[HEARTBEAT] client=true state=" + clientInstance.getGameState());
+                    }
 
                     if (clientInstance != null && clientInstance.getGameState() == GameState.LOGGED_IN) {
                         ScriptManager.registerIfReady();
-                    }
-
-                    for (Runnable r : scripts) {
-                        try { r.run(); } catch (Throwable t) { t.printStackTrace(); }
+                        ScriptManager.tickAll();
                     }
 
                     Thread.sleep(600);
@@ -139,11 +119,10 @@ public class Agent {
     }
 
     // =======================
-    // ACTIONS
+    // ATTACK METHOD
     // =======================
     public static void attackNpc(NPC npc) {
         if (clientInstance == null || npc == null) return;
-
         if (fwAMethod == null) {
             tryFwCapture();
             if (fwAMethod == null) {
@@ -155,18 +134,15 @@ public class Agent {
         Player p = clientInstance.getLocalPlayer();
         if (p == null) return;
 
-        WorldPoint pl = p.getWorldLocation();
         WorldPoint nl = npc.getWorldLocation();
-        if (pl == null || nl == null) return;
-
-        if (pl.distanceTo(nl) > 1) return;
+        if (nl == null) return;
 
         try {
             fwAMethod.invoke(
                     null,
-                    pl.getX(),
-                    pl.getY(),
-                    20,
+                    nl.getX(),
+                    nl.getY(),
+                    9,                 // NPC attack opcode (Ferox)
                     npc.getIndex(),
                     0,
                     npc.getId(),
@@ -175,9 +151,40 @@ public class Agent {
                     -1,
                     -1
             );
-            System.out.println("[AGENT] ATTACK EXECUTED -> npc=" + npc.getIndex());
+            System.out.println("[AGENT] ATTACK EXECUTED -> npc idx=" + npc.getIndex());
         } catch (Throwable t) {
-            System.err.println("[AGENT] Attack failed: " + t.getMessage());
+            System.err.println("[AGENT] Attack failed");
+            t.printStackTrace();
+        }
+    }
+
+    // =======================
+    // CLIENT THREAD HELPER
+    // =======================
+    public static void runOnClientThread(Runnable task) {
+        if (clientInstance == null) return;
+
+        try {
+            // Cast to decompiled client to access fw and isClientThread
+            osrs.client decompiledClient = (osrs.client) clientInstance;
+
+            if (decompiledClient.fw != null) {
+                decompiledClient.fw.submit(() -> {
+                    try {
+                        if (!decompiledClient.isClientThread()) return;
+                        task.run();
+                    } catch (Throwable t) {
+                        System.err.println("[AGENT] runOnClientThread failed");
+                        t.printStackTrace();
+                    }
+                });
+            } else {
+                // fallback: run immediately (may throw assertion if not client thread)
+                task.run();
+            }
+        } catch (ClassCastException e) {
+            System.err.println("[AGENT] clientInstance is not decompiled client class!");
+            e.printStackTrace();
         }
     }
 }

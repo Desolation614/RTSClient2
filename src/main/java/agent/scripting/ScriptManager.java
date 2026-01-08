@@ -1,7 +1,8 @@
 package agent.scripting;
 
-import net.runelite.api.Client;
-import net.runelite.api.GameState;
+import agent.Agent;
+import agent.scripting.examples.GoblinFighter;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,40 +10,31 @@ public class ScriptManager {
     private static final List<Script> scripts = new ArrayList<>();
     private static boolean registeredGoblinFighter = false;
 
-    public static void register(Script script) {
-        scripts.add(script);
-        System.out.println("[ScriptManager] Registered: " + script.getClass().getSimpleName());
-    }
-
     public static void registerIfReady() {
         if (registeredGoblinFighter) return;
-        Client client = agent.Agent.clientInstance;
-        if (client == null || client.getGameState() != GameState.LOGGED_IN || client.getNpcs() == null) {
-            return;
-        }
-        register(new agent.scripting.examples.GoblinFighter());
+
+        if (Agent.clientInstance == null) return;
+
+        // Only register when NPCs exist in the world
+        if (Agent.clientInstance.getGameState() != net.runelite.api.GameState.LOGGED_IN) return;
+        if (Agent.clientInstance.getNpcs() == null || Agent.clientInstance.getNpcs().isEmpty()) return;
+
+        register(new GoblinFighter());
         registeredGoblinFighter = true;
-        System.out.println("[ScriptManager] GoblinFighter registered - client ready");
-        ScriptManager.startAll();
+        System.out.println("[ScriptManager] GoblinFighter registered!");
     }
 
-    public static void startAll() {
-        for (Script script : scripts) {
-            script.onStart();
-        }
+    public static void register(Script script) {
+        scripts.add(script);
     }
 
     public static void tickAll() {
         for (Script script : scripts) {
-            script.onTick();
+            try {
+                script.onTick();
+            } catch (Throwable t) {
+                System.err.println("[ScriptManager] Script tick failed: " + t);
+            }
         }
-    }
-
-    public static void stopAll() {
-        for (Script script : scripts) {
-            script.onStop();
-        }
-        scripts.clear();
-        registeredGoblinFighter = false;
     }
 }
