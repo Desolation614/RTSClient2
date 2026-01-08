@@ -1,7 +1,7 @@
 package agent.scripting;
 
 import agent.Agent;
-import agent.scripting.examples.GoblinFighter;
+import agent.scripting.examples.GoblinPrinter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,14 +12,11 @@ public class ScriptManager {
 
     public static void registerIfReady() {
         if (registeredGoblinFighter) return;
-
         if (Agent.clientInstance == null) return;
 
-        // Only register when NPCs exist in the world
-        if (Agent.clientInstance.getGameState() != net.runelite.api.GameState.LOGGED_IN) return;
-        if (Agent.clientInstance.getNpcs() == null || Agent.clientInstance.getNpcs().isEmpty()) return;
+        // register GoblinPrinter with raw client
+        register(new GoblinPrinter(Agent.clientInstance));
 
-        register(new GoblinFighter());
         registeredGoblinFighter = true;
         System.out.println("[ScriptManager] GoblinFighter registered!");
     }
